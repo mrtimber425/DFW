@@ -1,0 +1,17 @@
+# Optional Python dependencies for the Digital Forensics Workbench.
+# These packages are not strictly required to run the GUI but enable
+# additional functionality such as filesystem extraction and analysis.
+
+# Python dependencies for the Digital Forensics Workbench.
+#
+# Note: `pytsk3` is not included by default because on Windows it
+# requires Microsoft Visual C++ Build Tools and precompiled wheels
+# are not available for all Python versions.  The GUI and most
+# functionality will work without it, but mounting disk images on
+# Windows will be unavailable unless you install `pytsk3` separately
+# or run the tool on Linux.  To install pytsk3 on Linux, you can
+# usually install the OS package (e.g. `python3-pytsk3` on Debian/
+# Ubuntu) or build it from source.
+
+# Volatility3 is used for memory forensics.
+volatility3
