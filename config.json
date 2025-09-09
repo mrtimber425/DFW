@@ -1,0 +1,9 @@
+{
+  "os_type": "Windows",
+  "tools": {},
+  "paths": {
+    "cases": "C:\\Users\\ogika\\Downloads\\EvidenceA\\dfw\\cases",
+    "exports": "C:\\Users\\ogika\\Downloads\\EvidenceA\\dfw\\exports",
+    "temp": "C:\\Users\\ogika\\Downloads\\EvidenceA\\dfw\\temp"
+  }
+}

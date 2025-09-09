@@ -1,0 +1,464 @@
+# Digital Forensics Workbench - Complete Setup & Usage Guide
+
+## 🚀 Quick Start
+
+### 1. Project Structure
+Create the following directory structure:
+
+```
+digital-forensics-workbench/
+├── dfw/
+│   ├── __init__.py           # Package init (provided)
+│   ├── __main__.py           # Entry point (provided)
+│   ├── main_app.py           # Main app loader (provided)
+│   ├── complete_main.py      # Complete GUI implementation
+│   ├── env.py                # Environment detection (existing)
+│   ├── mount.py              # Mount/extract operations (existing)
+│   ├── keywords.py           # Keyword search (existing)
+│   ├── forensic_tools.py     # Tool wrappers (existing)
+│   ├── os_detector.py        # OS detection module
+│   ├── browser_forensics.py  # Browser analysis module
+│   ├── registry_analyzer.py  # Registry analysis module
+│   ├── tool_manager.py       # External tool manager
+│   ├── notes_terminal.py     # Notes & terminal module
+│   ├── config.py             # Configuration management
+│   └── utils.py              # Utility functions
+├── requirements.txt          # Python dependencies
+├── install_dfw.py           # Enhanced installer
+├── setup.py                 # Package setup
+└── README.md               # Documentation
+```
+
+### 2. Installation
+
+#### Automated Installation
+```bash
+# Clone or create the project
+cd digital-forensics-workbench
+
+# Run the enhanced installer
+python install_dfw.py --venv-name dfw_env --test --run
+```
+
+#### Manual Installation
+```bash
+# Create virtual environment
+python -m venv dfw_env
+
+# Activate environment
+source dfw_env/bin/activate  # Linux/Mac
+dfw_env\Scripts\activate      # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install the package
+pip install -e .
+```
+
+### 3. Install External Tools
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Core tools
+sudo apt update
+sudo apt install -y \
+    sleuthkit \
+    python3-pytsk3 \
+    wireshark \
+    tshark \
+    binwalk \
+    foremost \
+    bulk-extractor \
+    exiftool \
+    yara
+
+# Volatility 3
+pip install volatility3
+
+# Plaso (Timeline)
+sudo add-apt-repository ppa:gift/stable
+sudo apt update
+sudo apt install plaso-tools
+
+# RegRipper
+git clone https://github.com/keydet89/RegRipper3.0.git
+cd RegRipper3.0
+sudo cp rip.pl /usr/local/bin/
+sudo chmod +x /usr/local/bin/rip.pl
+
+# ALEAPP/iLEAPP
+pip install aleapp ileapp
+```
+
+#### Windows
+```powershell
+# Install Chocolatey first
+# Then in Admin PowerShell:
+
+choco install -y `
+    sleuthkit `
+    wireshark `
+    binwalk `
+    exiftool `
+    yara `
+    git
+
+# Python tools
+pip install volatility3 aleapp ileapp
+
+# Download and install manually:
+# - RegRipper: https://github.com/keydet89/RegRipper3.0
+# - Plaso: https://github.com/log2timeline/plaso/releases
+# - Bulk Extractor: http://downloads.digitalcorpora.org/downloads/bulk_extractor/
+```
+
+#### macOS
+```bash
+# Using Homebrew
+brew install \
+    sleuthkit \
+    wireshark \
+    binwalk \
+    exiftool \
+    yara
+
+# Python tools
+pip install volatility3 aleapp ileapp plaso
+```
+
+## 📖 Usage Guide
+
+### Starting the Application
+
+```bash
+# Method 1: Using the package
+dfw
+
+# Method 2: Using Python module
+python -m dfw
+
+# Method 3: Direct script
+python dfw/complete_main.py
+```
+
+### Basic Workflow
+
+#### 1. Create a New Case
+- Launch DFW
+- Go to **File → New Case**
+- Enter case details:
+  - Case Name
+  - Case Number
+  - Investigator Name
+  - Description
+
+#### 2. Mount Evidence
+
+##### For Disk Images:
+1. Go to **Mount/Extract** tab
+2. Click **Browse** to select disk image (.dd, .img, .raw, .e01, .vmdk)
+3. Click **Calculate Hash** to verify integrity
+4. Click **Scan Partitions** to list partitions
+5. Select a partition
+6. Choose mount options:
+   - **Read-only** (recommended)
+   - **Loop device**
+   - Custom offset (if needed)
+7. Click **Mount** (Linux) or **Extract** (Windows/cross-platform)
+
+##### For E01 Images:
+```bash
+# In Terminal tab:
+ewfmount image.e01 /mnt/ewf
+# Then mount the raw image from /mnt/ewf
+```
+
+#### 3. Auto-Detect OS
+1. After mounting, go to **Case Info** tab
+2. Click **Auto-Detect** button
+3. Review detected OS information
+4. This optimizes available analysis tools
+
+#### 4. Browser Forensics
+1. Go to **Browser** tab
+2. Click **Analyze All Browsers**
+3. Review results in sub-tabs:
+   - History
+   - Downloads
+   - Cookies
+   - Bookmarks
+4. Click **Export Results** to save findings
+
+#### 5. Registry Analysis (Windows)
+1. Go to **Registry** tab
+2. Click **Analyze Registry** for automated analysis
+3. Or click **Run RegRipper** for detailed plugin-based analysis
+4. Review findings for:
+   - User activity
+   - USB devices
+   - Installed software
+   - Network configuration
+
+#### 6. Timeline Generation
+
+##### Using Plaso (Super Timeline):
+1. Go to **Timeline** tab
+2. Click **Generate with Plaso**
+3. Wait for processing (can take time for large images)
+4. Review timeline events
+5. Export to CSV/Excel for external analysis
+
+##### Using TSK:
+1. Click **Generate with TSK**
+2. Creates filesystem-based timeline
+3. Faster but less comprehensive than Plaso
+
+#### 7. Memory Analysis
+1. Go to **Memory** tab
+2. Browse to memory dump file
+3. Select appropriate plugin:
+   - **pslist**: Process list
+   - **netscan**: Network connections
+   - **filescan**: Open files
+   - **dlllist**: Loaded DLLs
+4. Click **Run Volatility**
+
+#### 8. Network Forensics
+1. Go to **Network** tab
+2. Load PCAP file
+3. Click **Analyze with tshark** for statistics
+4. Click **Extract Files** to carve transferred files
+
+#### 9. Mobile Forensics
+1. Go to **Mobile** tab
+2. Select extracted mobile data directory
+3. Click **Run ALEAPP** for Android
+4. Click **Run iLEAPP** for iOS
+
+#### 10. Note Taking
+1. Go to **Notes** tab throughout analysis
+2. Create notes with:
+   - Title and content
+   - Category (Finding, Analysis, Observation)
+   - Priority (High, Medium, Low)
+   - Tags for organization
+   - Evidence references
+3. Use markdown formatting
+4. Export notes as part of final report
+
+#### 11. Using the Terminal
+1. Go to **Terminal** tab
+2. Run any command directly:
+   ```bash
+   # Examples:
+   strings suspicious_file.exe
+   find /mnt/evidence -name "*.xlsx"
+   grep -r "password" /mnt/evidence/Users
+   ```
+3. Change terminal type (bash, python, powershell)
+
+#### 12. Generate Report
+1. Go to **Report** tab
+2. Select report type:
+   - Executive Summary
+   - Technical Report
+   - Full Analysis
+3. Choose format (HTML, PDF, DOCX, Markdown)
+4. Click **Generate Report**
+5. Review and export
+
+## 🔧 Advanced Features
+
+### Running External Tools
+
+#### File Carving
+```bash
+# In Terminal tab:
+foremost -i disk.dd -o carved_files/
+scalpel disk.dd -o scalpel_output/
+photorec disk.dd
+```
+
+#### YARA Scanning
+1. **Tools → YARA Scan**
+2. Select rules file
+3. Choose target directory
+4. Review matches for malware/suspicious files
+
+#### Bulk Extractor
+1. **Analysis → Bulk Extractor**
+2. Extracts:
+   - Email addresses
+   - URLs
+   - Credit card numbers
+   - Phone numbers
+   - Other patterns
+
+#### Hash Verification
+1. **Tools → Hash Calculator**
+2. Select files or directories
+3. Calculate MD5, SHA1, SHA256
+4. Export hash list for documentation
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+N | New Case |
+| Ctrl+O | Open Case |
+| Ctrl+S | Save Case |
+| Ctrl+Q | Quit |
+| Ctrl+Tab | Next Tab |
+| Ctrl+Shift+Tab | Previous Tab |
+| F5 | Refresh |
+| F9 | Run Analysis |
+
+### Terminal Commands Reference
+
+#### Forensic Commands
+```bash
+# String extraction
+strings -n 8 file.exe > strings.txt
+
+# File type identification
+file -b suspicious_file
+
+# Metadata extraction
+exiftool -r -csv /mnt/evidence > metadata.csv
+
+# Find files by extension
+find /mnt/evidence -name "*.docx" -o -name "*.xlsx"
+
+# Search for keywords
+grep -r -i "password\|credential" /mnt/evidence
+
+# Calculate hashes
+find /mnt/evidence -type f -exec md5sum {} \; > hashes.md5
+
+# List deleted files (ext4)
+debugfs /dev/sda1 -R "ls -d"
+```
+
+#### Network Analysis
+```bash
+# Extract HTTP objects
+tshark -r capture.pcap --export-objects http,http_files/
+
+# DNS queries
+tshark -r capture.pcap -Y "dns.qry.name" -T fields -e dns.qry.name | sort -u
+
+# TCP conversations
+tshark -r capture.pcap -q -z conv,tcp
+```
+
+#### Memory Analysis
+```bash
+# Dump process
+volatility3 -f memory.dmp windows.pslist --pid 1234 --dump
+
+# Extract registry hives
+volatility3 -f memory.dmp windows.registry.hivelist --dump
+```
+
+## 📊 Case Management Best Practices
+
+### Evidence Handling
+1. **Always work on copies**, never originals
+2. **Calculate hashes** before and after analysis
+3. **Document everything** in case notes
+4. **Maintain chain of custody**
+5. **Use write-blockers** when imaging
+
+### Analysis Workflow
+1. **Quick Triage** first for overview
+2. **Deep dive** into areas of interest
+3. **Correlate findings** across sources
+4. **Document anomalies** immediately
+5. **Generate timeline** for temporal analysis
+
+### Reporting
+1. **Executive Summary** first
+2. **Technical details** with evidence
+3. **Include screenshots** and artifacts
+4. **List tools and versions** used
+5. **Provide reproducible steps**
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+#### "Tool not found" errors
+- Verify tool is installed: `which toolname`
+- Add to PATH if needed
+- Check Tools menu for installation guide
+
+#### Mount fails on Linux
+- Run as root: `sudo python -m dfw`
+- Or configure sudoers for mount command
+
+#### Memory analysis fails
+- Verify Volatility3 installation
+- Check image format compatibility
+- Try different OS profiles
+
+#### Timeline generation slow
+- Normal for large images
+- Use TSK timeline for faster results
+- Consider filtering by date range
+
+#### Terminal not working
+- Check shell availability
+- Try different terminal type
+- Verify permissions
+
+### Performance Tips
+1. **Use SSD** for evidence storage
+2. **Allocate sufficient RAM** (8GB+ recommended)
+3. **Run intensive operations** overnight
+4. **Filter large datasets** before processing
+5. **Use parallel processing** when available
+
+## 📚 Additional Resources
+
+### Documentation
+- [The Sleuth Kit](https://www.sleuthkit.org/sleuthkit/docs.php)
+- [Volatility 3](https://volatility3.readthedocs.io/)
+- [Plaso/log2timeline](https://plaso.readthedocs.io/)
+- [RegRipper](https://github.com/keydet89/RegRipper3.0)
+- [ALEAPP](https://github.com/abrignoni/ALEAPP)
+
+### Training
+- [SANS FOR508](https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting-training/)
+- [Digital Forensics Basics](https://www.coursera.org/learn/digital-forensics)
+- [Memory Forensics](https://www.memoryanalysis.net/memory-forensics-training)
+
+### Communities
+- [r/computerforensics](https://www.reddit.com/r/computerforensics/)
+- [Digital Forensics Discord](https://discord.gg/digitalforensics)
+- [DFIR Twitter](https://twitter.com/hashtag/dfir)
+
+## 🔒 Legal Considerations
+
+- **Obtain proper authorization** before analysis
+- **Respect privacy laws** in your jurisdiction
+- **Follow organizational policies**
+- **Maintain confidentiality**
+- **Prepare for court testimony**
+
+## 📞 Support
+
+For issues or questions:
+1. Check the documentation
+2. Review troubleshooting section
+3. Search existing issues
+4. Contact support with:
+   - DFW version
+   - OS and version
+   - Error messages
+   - Steps to reproduce
+
+---
+
+**Digital Forensics Workbench v3.0** - Professional Edition  
+© 2024 - MIT License

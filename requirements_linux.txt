@@ -1,0 +1,56 @@
+# Digital Forensics Workbench - Linux Requirements
+# Full forensic tool support for Linux systems
+
+# Core Data Processing
+pandas
+numpy
+matplotlib
+seaborn
+plotly
+requests
+beautifulsoup4
+lxml
+openpyxl
+pillow
+reportlab
+fpdf2
+weasyprint
+xhtml2pdf
+markdown
+tabulate
+python-dateutil
+jinja2
+pyyaml
+
+# Full Forensic Analysis Suite
+volatility3
+yara-python
+pefile
+pyelftools
+scapy
+python-magic
+python-registry
+regipy
+python-evtx
+pycryptodome
+coloredlogs
+binwalk
+python-tlsh
+
+# Timeline Analysis
+plaso
+
+# Network Analysis
+dpkt
+
+# Additional Linux Tools (install via apt/dnf)
+# sleuthkit - Install via: sudo apt-get install sleuthkit
+# bulk-extractor - Install via: sudo apt-get install bulk-extractor  
+# foremost - Install via: sudo apt-get install foremost
+# autopsy - Install via: sudo apt-get install autopsy
+
+# Development Tools (optional)
+pytest
+black
+mypy
+

@@ -1,0 +1,38 @@
+# Digital Forensics Workbench - Windows Requirements
+# Packages that work reliably on Windows
+
+# Core Data Processing
+pandas
+numpy
+matplotlib
+requests
+beautifulsoup4
+lxml
+openpyxl
+pillow
+reportlab
+python-dateutil
+jinja2
+pyyaml
+
+# Windows-Compatible Forensic Tools
+volatility3
+yara-python
+pefile
+python-magic-bin  # Windows binary version
+python-registry
+regipy
+python-evtx
+pycryptodome
+coloredlogs
+
+# Windows-Specific Tools
+pywin32  # Windows API access
+
+# Note: Some tools require manual installation on Windows:
+# - The Sleuth Kit: Download from sleuthkit.org
+# - Plaso: Use Docker or WSL2 for best compatibility
+# - Bulk Extractor: Compile from source or use Linux VM
+
+# For full functionality, consider using WSL2 (Windows Subsystem for Linux)
+
