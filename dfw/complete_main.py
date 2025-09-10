@@ -27,13 +27,18 @@ from .registry_analyzer import RegistryAnalyzer
 from .tool_manager import ExternalToolManager, ToolResult
 from .notes_terminal import CaseNotesManager, NotesTab, EmbeddedTerminal
 from .auto_installer import ToolInstaller, check_and_install_tools
+from .case_manager import CaseManager, CaseInfo, EvidenceItem, MountedDrive
+from .error_handler import error_handler_instance, setup_global_exception_handler, error_handler
 
 
 class CompleteDFW(Tk):
-    """Complete Digital Forensics Workbench Application."""
+    """Complete Digital Forensics Workbench Application with Case Management."""
 
     def __init__(self):
         super().__init__()
+
+        # Setup global error handling
+        setup_global_exception_handler()
 
         # Application setup
         self.title("Digital Forensics Workbench - Professional Edition")
@@ -49,7 +54,7 @@ class CompleteDFW(Tk):
         # Initialize managers
         self.tool_manager = ExternalToolManager()
         self.tool_installer = ToolInstaller(self)
-        self.case_dir = None
+        self.case_manager = CaseManager()
         self.notes_manager = None
         self.current_mount_point = None
         self.detected_os = None
@@ -59,8 +64,8 @@ class CompleteDFW(Tk):
         self._create_menu()
         self._create_main_layout()
 
-        # Initialize case
-        self._initialize_case()
+        # Initialize or load case
+        self._initialize_or_load_case()
 
         # Check environment and tools on startup
         self.after(100, self._check_environment)
@@ -77,11 +82,14 @@ class CompleteDFW(Tk):
         # File menu
         file_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="New Case", command=self._initialize_case)
+        file_menu.add_command(label="New Case", command=self._new_case_dialog)
+        file_menu.add_command(label="Open Case", command=self._open_case_dialog)
         file_menu.add_command(label="Save Case", command=self._save_case)
         file_menu.add_separator()
         file_menu.add_command(label="Import Evidence", command=self._import_evidence)
         file_menu.add_command(label="Export Report", command=self._export_report)
+        file_menu.add_separator()
+        file_menu.add_command(label="Recent Cases", command=self._show_recent_cases)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit)
 
@@ -187,11 +195,39 @@ class CompleteDFW(Tk):
 
         self.evidence_tree.bind("<Button-3>", self._show_evidence_menu)
 
+        # Mounted Drives Section
+        mounted_header = Frame(left_panel)
+        mounted_header.pack(fill=X, padx=5, pady=(10,5))
+
+        Label(mounted_header, text="Mounted Drives", font=('Arial', 11, 'bold')).pack(side=LEFT)
+        
+        # Mounted drives controls
+        mounted_controls = Frame(mounted_header)
+        mounted_controls.pack(side=RIGHT)
+        
+        Button(mounted_controls, text="↻", command=self._refresh_mounted_drives, width=2).pack(side=LEFT, padx=1)
+        Button(mounted_controls, text="📂", command=self._select_mounted_drive, width=2).pack(side=LEFT, padx=1)
+
+        # Mounted drives list
+        mounted_frame = Frame(left_panel)
+        mounted_frame.pack(fill=X, padx=5, pady=(0,5))
+
+        mounted_scrollbar = ttk.Scrollbar(mounted_frame)
+        mounted_scrollbar.pack(side=RIGHT, fill=Y)
+
+        self.mounted_tree = ttk.Treeview(mounted_frame, show='tree', 
+                                        yscrollcommand=mounted_scrollbar.set, height=4)
+        self.mounted_tree.pack(side=LEFT, fill=X, expand=True)
+        mounted_scrollbar.config(command=self.mounted_tree.yview)
+
+        # Bind selection to load file tree
+        self.mounted_tree.bind('<<TreeviewSelect>>', self._on_mounted_drive_select)
+
         # File Tree Section
         file_tree_header = Frame(left_panel)
         file_tree_header.pack(fill=X, padx=5, pady=(10,5))
 
-        Label(file_tree_header, text="Mounted Drive Contents", font=('Arial', 11, 'bold')).pack(side=LEFT)
+        Label(file_tree_header, text="File Browser", font=('Arial', 11, 'bold')).pack(side=LEFT)
         
         # File tree controls
         controls_frame = Frame(file_tree_header)
@@ -252,6 +288,13 @@ class CompleteDFW(Tk):
         Label(details_frame, text="Description:").grid(row=4, column=0, sticky='nw', padx=5, pady=2)
         self.case_description = Text(details_frame, height=3, width=50)
         self.case_description.grid(row=4, column=1, sticky='ew', padx=5, pady=2)
+
+        # Case actions
+        actions_frame = Frame(details_frame)
+        actions_frame.grid(row=5, column=1, sticky='ew', padx=5, pady=10)
+        
+        Button(actions_frame, text="Save Case Info", command=self._save_case_info).pack(side=LEFT, padx=5)
+        Button(actions_frame, text="Export Case", command=self._export_case_info).pack(side=LEFT, padx=5)
 
         # OS Detection
         os_frame = ttk.LabelFrame(frame, text="OS Detection", padding=10)
@@ -574,6 +617,466 @@ class CompleteDFW(Tk):
         self.status_label.config(text=message)
         self.update_idletasks()
 
+    # Case Management Methods
+    def _initialize_or_load_case(self):
+        """Initialize new case or load existing case with mounted drives."""
+        try:
+            # Check if there are any existing cases
+            cases = self.case_manager.list_cases()
+            
+            if cases:
+                # Show dialog to choose between new case or load existing
+                choice = messagebox.askyesnocancel(
+                    "Case Selection",
+                    "Existing cases found. Would you like to:\n\n"
+                    "Yes - Load an existing case\n"
+                    "No - Create a new case\n"
+                    "Cancel - Start without a case"
+                )
+                
+                if choice is True:
+                    self._open_case_dialog()
+                    return
+                elif choice is False:
+                    self._new_case_dialog()
+                    return
+                # If cancelled, continue with default initialization
+            
+            # Default initialization - create temporary case
+            self._initialize_default_case()
+            
+        except Exception as e:
+            print(f"Error during case initialization: {e}")
+            self._initialize_default_case()
+
+    def _initialize_default_case(self):
+        """Initialize a default temporary case."""
+        try:
+            case_info = CaseInfo(
+                case_name="Temporary Case",
+                case_number="TEMP-001",
+                investigator=os.getenv("USER", "Investigator"),
+                date_created=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                description="Temporary case for quick analysis"
+            )
+            
+            case_path = self.case_manager.create_new_case(case_info)
+            
+            # Initialize notes manager
+            self.notes_manager = CaseNotesManager(case_path)
+            
+            # Update UI
+            self._update_case_ui()
+            
+            # Check for existing mounted drives
+            self._check_existing_mounts()
+            
+        except Exception as e:
+            print(f"Error initializing default case: {e}")
+            messagebox.showerror("Error", f"Failed to initialize case: {e}")
+
+    def _new_case_dialog(self):
+        """Show new case creation dialog."""
+        dialog = Toplevel(self)
+        dialog.title("New Case")
+        dialog.geometry("500x400")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Case information fields
+        fields_frame = ttk.LabelFrame(dialog, text="Case Information", padding=10)
+        fields_frame.pack(fill=X, padx=10, pady=10)
+
+        fields = [
+            ("Case Name:", "case_name"),
+            ("Case Number:", "case_number"),
+            ("Investigator:", "investigator"),
+        ]
+
+        entries = {}
+        for i, (label, field) in enumerate(fields):
+            Label(fields_frame, text=label).grid(row=i, column=0, sticky='w', padx=5, pady=5)
+            entry = Entry(fields_frame, width=40)
+            entry.grid(row=i, column=1, sticky='ew', padx=5, pady=5)
+            entries[field] = entry
+
+        # Set default values
+        entries["investigator"].insert(0, os.getenv("USER", "Investigator"))
+
+        # Description
+        Label(fields_frame, text="Description:").grid(row=3, column=0, sticky='nw', padx=5, pady=5)
+        desc_text = Text(fields_frame, height=4, width=40)
+        desc_text.grid(row=3, column=1, sticky='ew', padx=5, pady=5)
+
+        fields_frame.grid_columnconfigure(1, weight=1)
+
+        # Buttons
+        button_frame = Frame(dialog)
+        button_frame.pack(fill=X, padx=10, pady=10)
+
+        def create_case():
+            try:
+                case_info = CaseInfo(
+                    case_name=entries["case_name"].get() or "New Case",
+                    case_number=entries["case_number"].get() or "CASE-001",
+                    investigator=entries["investigator"].get() or "Investigator",
+                    date_created=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    description=desc_text.get("1.0", END).strip()
+                )
+                
+                case_path = self.case_manager.create_new_case(case_info)
+                
+                # Initialize notes manager
+                self.notes_manager = CaseNotesManager(case_path)
+                
+                # Update UI
+                self._update_case_ui()
+                
+                dialog.destroy()
+                messagebox.showinfo("Success", f"Case created successfully:\n{case_path}")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create case: {e}")
+
+        Button(button_frame, text="Create Case", command=create_case).pack(side=RIGHT, padx=5)
+        Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=RIGHT)
+
+    def _open_case_dialog(self):
+        """Show open case dialog."""
+        dialog = Toplevel(self)
+        dialog.title("Open Case")
+        dialog.geometry("700x500")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Cases list
+        list_frame = ttk.LabelFrame(dialog, text="Available Cases", padding=10)
+        list_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
+
+        columns = ('Name', 'Number', 'Investigator', 'Date', 'Path')
+        cases_tree = ttk.Treeview(list_frame, columns=columns, show='headings')
+        for col in columns:
+            cases_tree.heading(col, text=col)
+        cases_tree.pack(fill=BOTH, expand=True)
+
+        # Load cases
+        cases = self.case_manager.list_cases()
+        for case in cases:
+            cases_tree.insert('', 'end', values=(
+                case['name'], case['number'], case['investigator'], 
+                case['date_created'], case['path']
+            ))
+
+        # Buttons
+        button_frame = Frame(dialog)
+        button_frame.pack(fill=X, padx=10, pady=10)
+
+        def open_case():
+            selection = cases_tree.selection()
+            if not selection:
+                messagebox.showwarning("No Selection", "Please select a case to open")
+                return
+            
+            item = cases_tree.item(selection[0])
+            case_path = item['values'][4]
+            
+            try:
+                if self.case_manager.load_case(case_path):
+                    # Initialize notes manager
+                    self.notes_manager = CaseNotesManager(case_path)
+                    
+                    # Update UI
+                    self._update_case_ui()
+                    
+                    # Load mounted drives
+                    self._load_case_mounted_drives()
+                    
+                    dialog.destroy()
+                    messagebox.showinfo("Success", "Case loaded successfully")
+                else:
+                    messagebox.showerror("Error", "Failed to load case")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load case: {e}")
+
+        def browse_case():
+            case_path = filedialog.askdirectory(title="Select Case Directory")
+            if case_path:
+                try:
+                    if self.case_manager.load_case(case_path):
+                        # Initialize notes manager
+                        self.notes_manager = CaseNotesManager(case_path)
+                        
+                        # Update UI
+                        self._update_case_ui()
+                        
+                        # Load mounted drives
+                        self._load_case_mounted_drives()
+                        
+                        dialog.destroy()
+                        messagebox.showinfo("Success", "Case loaded successfully")
+                    else:
+                        messagebox.showerror("Error", "Invalid case directory")
+                        
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to load case: {e}")
+
+        Button(button_frame, text="Open Selected", command=open_case).pack(side=RIGHT, padx=5)
+        Button(button_frame, text="Browse...", command=browse_case).pack(side=RIGHT, padx=5)
+        Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=RIGHT)
+
+    def _update_case_ui(self):
+        """Update UI with current case information."""
+        if not self.case_manager.case_info:
+            return
+        
+        case_info = self.case_manager.case_info
+        
+        # Update case tab fields
+        self.case_vars["case_name"].delete(0, END)
+        self.case_vars["case_name"].insert(0, case_info.case_name)
+        
+        self.case_vars["case_number"].delete(0, END)
+        self.case_vars["case_number"].insert(0, case_info.case_number)
+        
+        self.case_vars["investigator"].delete(0, END)
+        self.case_vars["investigator"].insert(0, case_info.investigator)
+        
+        self.case_vars["date_created"].delete(0, END)
+        self.case_vars["date_created"].insert(0, case_info.date_created)
+        
+        self.case_description.delete("1.0", END)
+        self.case_description.insert("1.0", case_info.description)
+        
+        # Update window title
+        self.title(f"Digital Forensics Workbench - {case_info.case_name}")
+        
+        # Update evidence tree
+        self._refresh_evidence_tree()
+        
+        # Update mounted drives
+        self._refresh_mounted_drives()
+
+    def _save_case_info(self):
+        """Save case information from UI."""
+        if not self.case_manager.case_info:
+            return
+        
+        try:
+            # Update case info from UI
+            self.case_manager.case_info.case_name = self.case_vars["case_name"].get()
+            self.case_manager.case_info.case_number = self.case_vars["case_number"].get()
+            self.case_manager.case_info.investigator = self.case_vars["investigator"].get()
+            self.case_manager.case_info.description = self.case_description.get("1.0", END).strip()
+            
+            # Save case
+            if self.case_manager.save_case():
+                messagebox.showinfo("Success", "Case information saved successfully")
+                self._update_case_ui()
+            else:
+                messagebox.showerror("Error", "Failed to save case information")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save case: {e}")
+
+    def _save_case(self):
+        """Save current case."""
+        try:
+            if self.case_manager.save_case():
+                self.set_status("Case saved successfully")
+            else:
+                messagebox.showerror("Error", "Failed to save case")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save case: {e}")
+
+    def _export_case_info(self):
+        """Export case information."""
+        export_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Export Case Information"
+        )
+        
+        if export_path:
+            try:
+                if self.case_manager.export_case_info(export_path):
+                    messagebox.showinfo("Success", f"Case information exported to:\n{export_path}")
+                else:
+                    messagebox.showerror("Error", "Failed to export case information")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export case: {e}")
+
+    def _check_existing_mounts(self):
+        """Check for existing mounted drives in /mnt directory."""
+        try:
+            mnt_dir = Path("/mnt")
+            if not mnt_dir.exists():
+                return
+            
+            existing_mounts = []
+            for item in mnt_dir.iterdir():
+                if item.is_dir() and self.case_manager.is_drive_mounted(str(item)):
+                    existing_mounts.append(str(item))
+            
+            if existing_mounts:
+                # Ask user if they want to add these to the case
+                mount_list = "\n".join(existing_mounts)
+                result = messagebox.askyesno(
+                    "Existing Mounts Found",
+                    f"Found existing mounted drives:\n\n{mount_list}\n\n"
+                    "Would you like to add these to the current case?"
+                )
+                
+                if result:
+                    for mount_point in existing_mounts:
+                        # Create a mounted drive entry
+                        mounted_drive = MountedDrive(
+                            image_path="Unknown",
+                            mount_point=mount_point,
+                            readonly=True,
+                            mount_time=datetime.datetime.now().isoformat()
+                        )
+                        self.case_manager.add_mounted_drive(mounted_drive)
+                    
+                    self._refresh_mounted_drives()
+                    messagebox.showinfo("Success", f"Added {len(existing_mounts)} mounted drives to case")
+                    
+        except Exception as e:
+            print(f"Error checking existing mounts: {e}")
+
+    def _load_case_mounted_drives(self):
+        """Load mounted drives from case and validate them."""
+        try:
+            mounted_drives = self.case_manager.get_mounted_drives()
+            valid_drives = []
+            invalid_drives = []
+            
+            for drive in mounted_drives:
+                if self.case_manager.is_drive_mounted(drive.mount_point):
+                    valid_drives.append(drive)
+                else:
+                    invalid_drives.append(drive)
+            
+            if invalid_drives:
+                invalid_list = "\n".join([f"- {d.mount_point}" for d in invalid_drives])
+                messagebox.showwarning(
+                    "Invalid Mounts",
+                    f"The following mounted drives from the case are no longer available:\n\n{invalid_list}\n\n"
+                    "You may need to remount these drives."
+                )
+            
+            if valid_drives:
+                valid_list = "\n".join([f"- {d.mount_point}" for d in valid_drives])
+                messagebox.showinfo(
+                    "Mounted Drives Loaded",
+                    f"Successfully loaded {len(valid_drives)} mounted drives:\n\n{valid_list}"
+                )
+                
+                # Set the first valid drive as current
+                if valid_drives:
+                    self.current_mount_point = valid_drives[0].mount_point
+                    self._refresh_file_tree()
+                    
+                    # Auto-populate search directory
+                    self.search_dir.delete(0, END)
+                    self.search_dir.insert(0, self.current_mount_point)
+            
+            self._refresh_mounted_drives()
+            
+        except Exception as e:
+            print(f"Error loading case mounted drives: {e}")
+
+    def _refresh_mounted_drives(self):
+        """Refresh the mounted drives list."""
+        # Clear existing items
+        for item in self.mounted_tree.get_children():
+            self.mounted_tree.delete(item)
+        
+        try:
+            mounted_drives = self.case_manager.get_mounted_drives()
+            
+            for drive in mounted_drives:
+                # Check if drive is still mounted
+                is_mounted = self.case_manager.is_drive_mounted(drive.mount_point)
+                status = "🟢" if is_mounted else "🔴"
+                
+                display_name = f"{status} {os.path.basename(drive.mount_point)}"
+                if drive.image_path != "Unknown":
+                    display_name += f" ({os.path.basename(drive.image_path)})"
+                
+                self.mounted_tree.insert('', 'end', text=display_name, values=[drive.mount_point])
+                
+        except Exception as e:
+            print(f"Error refreshing mounted drives: {e}")
+
+    def _on_mounted_drive_select(self, event):
+        """Handle mounted drive selection."""
+        selection = self.mounted_tree.selection()
+        if selection:
+            item = self.mounted_tree.item(selection[0])
+            mount_point = item['values'][0] if item['values'] else None
+            
+            if mount_point and self.case_manager.is_drive_mounted(mount_point):
+                self.current_mount_point = mount_point
+                self._refresh_file_tree()
+                
+                # Auto-populate search directory
+                self.search_dir.delete(0, END)
+                self.search_dir.insert(0, mount_point)
+                
+                self.set_status(f"Selected mounted drive: {mount_point}")
+
+    def _select_mounted_drive(self):
+        """Manually select a mounted drive."""
+        mount_point = filedialog.askdirectory(
+            title="Select Mounted Drive Directory",
+            initialdir="/mnt"
+        )
+        
+        if mount_point:
+            if self.case_manager.is_drive_mounted(mount_point):
+                # Add to case if not already present
+                mounted_drive = MountedDrive(
+                    image_path="Unknown",
+                    mount_point=mount_point,
+                    readonly=True,
+                    mount_time=datetime.datetime.now().isoformat()
+                )
+                
+                self.case_manager.add_mounted_drive(mounted_drive)
+                self.current_mount_point = mount_point
+                
+                self._refresh_mounted_drives()
+                self._refresh_file_tree()
+                
+                # Auto-populate search directory
+                self.search_dir.delete(0, END)
+                self.search_dir.insert(0, mount_point)
+                
+                messagebox.showinfo("Success", f"Added mounted drive: {mount_point}")
+            else:
+                messagebox.showerror("Error", f"Directory is not a mounted drive: {mount_point}")
+
+    def _refresh_evidence_tree(self):
+        """Refresh the evidence tree."""
+        # Clear existing evidence items (keep case node)
+        for item in self.evidence_tree.get_children(self.case_node):
+            self.evidence_tree.delete(item)
+        
+        try:
+            evidence_items = self.case_manager.get_evidence_items()
+            
+            for evidence in evidence_items:
+                display_name = f"{evidence.name} ({evidence.item_type})"
+                self.evidence_tree.insert(self.case_node, 'end', text=display_name, values=[evidence.path])
+                
+        except Exception as e:
+            print(f"Error refreshing evidence tree: {e}")
+
+    def _show_recent_cases(self):
+        """Show recent cases."""
+        self._open_case_dialog()
+
     def _initialize_case(self):
         """Initialize a new case."""
         self.case_dir = tempfile.mkdtemp(prefix="dfw_case_")
@@ -725,10 +1228,11 @@ class CompleteDFW(Tk):
                 messagebox.showerror("Mount Failed", "Failed to mount partition")
 
     def _force_mount_image(self):
-        """Force mount disk image directly (useful when no partitions detected)."""
+        """Force mount disk image directly with case management integration and robust error handling."""
         image = self.image_path.get()
         mount_point = self.mount_path.get()
         
+        # Input validation with detailed error messages
         if not image:
             messagebox.showwarning("No Image", "Please select a disk image first")
             return
@@ -738,73 +1242,208 @@ class CompleteDFW(Tk):
             return
         
         if not os.path.exists(image):
-            messagebox.showerror("Error", "Image file not found")
+            messagebox.showerror("Error", f"Image file not found: {image}")
+            return
+        
+        # Validate image file size and accessibility
+        try:
+            image_size = os.path.getsize(image)
+            if image_size == 0:
+                messagebox.showerror("Error", "Image file is empty")
+                return
+        except OSError as e:
+            messagebox.showerror("Error", f"Cannot access image file: {str(e)}")
             return
         
         # Create mount point if it doesn't exist
         try:
             os.makedirs(mount_point, exist_ok=True)
+            
+            # Check if mount point is already in use
+            if os.path.ismount(mount_point):
+                result = messagebox.askyesno(
+                    "Mount Point In Use", 
+                    f"Mount point {mount_point} is already in use.\n\nWould you like to unmount it first?"
+                )
+                if result:
+                    try:
+                        import subprocess
+                        subprocess.run(["sudo", "umount", mount_point], check=True)
+                    except subprocess.CalledProcessError as e:
+                        messagebox.showerror("Error", f"Failed to unmount existing mount: {str(e)}")
+                        return
+                else:
+                    return
+                    
         except Exception as e:
             messagebox.showerror("Error", f"Cannot create mount point: {str(e)}")
             return
         
-        # Get offset if specified
-        offset_str = self.offset_var.get()
+        # Get and validate offset
+        offset_str = self.offset_var.get().strip()
         offset = 0
         if offset_str:
             try:
-                offset = int(offset_str)
+                # Support both decimal and hex formats
+                if offset_str.startswith('0x') or offset_str.startswith('0X'):
+                    offset = int(offset_str, 16)
+                else:
+                    offset = int(offset_str)
+                    
+                if offset < 0:
+                    messagebox.showerror("Error", "Offset cannot be negative")
+                    return
+                    
             except ValueError:
-                messagebox.showerror("Error", "Invalid offset value")
+                messagebox.showerror("Error", f"Invalid offset value: {offset_str}")
                 return
         
         self.set_status("Force mounting image...")
+        self.progress['mode'] = 'indeterminate'
+        self.progress.start()
         
         def mount_thread():
             try:
-                # Build mount command
+                # Build mount command with proper error handling
                 cmd = ["sudo", "mount"]
                 
+                # Build mount options
+                mount_options = ["loop"]
+                
                 if offset > 0:
-                    cmd.extend(["-o", f"loop,offset={offset}"])
-                else:
-                    cmd.extend(["-o", "loop"])
+                    mount_options.append(f"offset={offset}")
                 
                 if self.readonly.get():
-                    cmd.extend(["-o", "ro"])
+                    mount_options.append("ro")
                 
+                cmd.extend(["-o", ",".join(mount_options)])
                 cmd.extend([image, mount_point])
                 
-                # Execute mount command
+                # Execute mount command with timeout
                 import subprocess
-                result = subprocess.run(cmd, capture_output=True, text=True)
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=30  # 30 second timeout
+                )
                 
                 if result.returncode == 0:
                     self.current_mount_point = mount_point
-                    self.set_status(f"Force mounted image to {mount_point}")
                     
-                    # Add to evidence tree
-                    self.evidence_tree.insert(self.case_node, 'end',
-                                              text=f"Force Mount: {os.path.basename(mount_point)}")
+                    # Calculate image hash for evidence tracking
+                    self.set_status("Calculating image hash...")
+                    image_hash = self.case_manager.calculate_file_hash(image, 'sha256')
                     
-                    # Auto-refresh file tree
+                    # Detect file system type
+                    fs_type = None
+                    try:
+                        fs_result = subprocess.run(
+                            ["file", "-s", image], 
+                            capture_output=True, 
+                            text=True, 
+                            timeout=10
+                        )
+                        if fs_result.returncode == 0:
+                            fs_output = fs_result.stdout.lower()
+                            if 'ntfs' in fs_output:
+                                fs_type = 'NTFS'
+                            elif 'ext' in fs_output:
+                                fs_type = 'EXT'
+                            elif 'fat' in fs_output:
+                                fs_type = 'FAT'
+                            elif 'hfs' in fs_output:
+                                fs_type = 'HFS+'
+                    except Exception:
+                        pass  # File system detection is optional
+                    
+                    # Create mounted drive record with comprehensive information
+                    mounted_drive = MountedDrive(
+                        image_path=image,
+                        mount_point=mount_point,
+                        offset=offset if offset > 0 else None,
+                        readonly=self.readonly.get(),
+                        image_hash=image_hash,
+                        file_system=fs_type,
+                        size_bytes=image_size
+                    )
+                    
+                    # Add to case with error handling
+                    if not self.case_manager.add_mounted_drive(mounted_drive):
+                        print("Warning: Failed to add mounted drive to case")
+                    
+                    # Add as evidence item if not already present
+                    evidence = EvidenceItem(
+                        name=os.path.basename(image),
+                        path=image,
+                        item_type='disk_image',
+                        hash_sha256=image_hash,
+                        size_bytes=image_size,
+                        description=f"Disk image mounted at {mount_point} with offset {offset if offset > 0 else 0}"
+                    )
+                    
+                    if not self.case_manager.add_evidence_item(evidence):
+                        print("Note: Evidence item already exists in case")
+                    
+                    self.set_status(f"Successfully mounted image to {mount_point}")
+                    
+                    # Update UI components
+                    self._refresh_mounted_drives()
+                    self._refresh_evidence_tree()
                     self._refresh_file_tree()
                     
                     # Auto-populate search directory
-                    self.search_dir.delete(0, END)
-                    self.search_dir.insert(0, mount_point)
+                    try:
+                        self.search_dir.delete(0, END)
+                        self.search_dir.insert(0, mount_point)
+                    except Exception:
+                        pass  # Search directory update is optional
                     
-                    messagebox.showinfo("Success", f"Image mounted successfully to:\n{mount_point}")
+                    # Show success message with details
+                    success_msg = f"Image mounted successfully!\n\n"
+                    success_msg += f"Mount Point: {mount_point}\n"
+                    success_msg += f"File System: {fs_type or 'Unknown'}\n"
+                    success_msg += f"Size: {image_size / (1024*1024*1024):.2f} GB\n"
+                    if image_hash:
+                        success_msg += f"SHA256: {image_hash[:16]}...\n"
+                    success_msg += f"Added to case: {self.case_manager.case_info.case_name if self.case_manager.case_info else 'Unknown'}"
+                    
+                    messagebox.showinfo("Mount Success", success_msg)
+                    
                 else:
-                    error_msg = f"Mount failed: {result.stderr}"
-                    self.set_status(f"Force mount failed: {result.stderr}")
+                    error_msg = f"Mount failed with return code {result.returncode}"
+                    if result.stderr:
+                        error_msg += f"\n\nError details:\n{result.stderr}"
+                    
+                    # Provide helpful suggestions based on common errors
+                    stderr_lower = result.stderr.lower() if result.stderr else ""
+                    if "permission denied" in stderr_lower:
+                        error_msg += "\n\nSuggestion: Try running the application with sudo privileges"
+                    elif "already mounted" in stderr_lower:
+                        error_msg += "\n\nSuggestion: The image may already be mounted elsewhere"
+                    elif "no such file" in stderr_lower:
+                        error_msg += "\n\nSuggestion: Check if the image file path is correct"
+                    elif "invalid argument" in stderr_lower:
+                        error_msg += "\n\nSuggestion: Try a different offset value or check image format"
+                    
+                    self.set_status(f"Mount failed: {result.stderr}")
                     messagebox.showerror("Mount Failed", error_msg)
                     
+            except subprocess.TimeoutExpired:
+                error_msg = "Mount operation timed out after 30 seconds"
+                self.set_status("Mount operation timed out")
+                messagebox.showerror("Timeout Error", error_msg)
+                
             except Exception as e:
-                error_msg = f"Force mount error: {str(e)}"
-                self.set_status(error_msg)
-                messagebox.showerror("Error", error_msg)
+                error_msg = f"Unexpected error during mount operation: {str(e)}"
+                self.set_status(f"Mount error: {str(e)}")
+                messagebox.showerror("Mount Error", error_msg)
+                
+            finally:
+                self.progress.stop()
+                self.progress['mode'] = 'determinate'
         
+        # Run mount operation in separate thread to prevent UI freezing
         threading.Thread(target=mount_thread, daemon=True).start()
 
     def _refresh_file_tree(self):
